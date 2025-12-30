@@ -236,7 +236,7 @@ def preview_data(num_records=1):
 # --- Main Execution ---
 if __name__ == "__main__":
     print("JotForm Data Transfer Tool\n" + "="*60)
-    RECORDS_TO_PROCESS = 300
+    RECORDS_TO_PROCESS = 50
 
     transfer_data(RECORDS_TO_PROCESS)
     preview_data(RECORDS_TO_PROCESS)
