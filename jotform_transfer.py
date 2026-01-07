@@ -1,4 +1,4 @@
-#################################  From GEMINI - Finally Working code #################################
+#################################  From Ankit.Kumar - Transfer Working code #################################
 import requests
 import time
 
@@ -73,7 +73,7 @@ def update_edit_link(submission_id):
         print(f"    ❌ Failed to update edit link: {e}")
 
 # --- Data Extraction ---
-def get_eligible_form1_data(num_records=1, api_search_limit=400):
+def get_eligible_form1_data(num_records=1, api_search_limit=800):
     url = f"https://api.jotform.com/form/{FORM1_ID}/submissions"
     params = {
         "apiKey": API_KEY,
@@ -124,7 +124,7 @@ def get_eligible_form1_data(num_records=1, api_search_limit=400):
     print(f"Fetched {len(extracted)} eligible Form1 records.")
     return extracted
 
-def get_existing_form2_lead_codes(api_search_limit=400):
+def get_existing_form2_lead_codes(api_search_limit=800):
     url = f"https://api.jotform.com/form/{FORM2_ID}/submissions"
     params = {"apiKey": API_KEY, "limit": api_search_limit}
     data = fetch_json(url, params)
@@ -182,4 +182,4 @@ def preview_and_transfer(num_records=1):
 
 if __name__ == "__main__":
     print("JotForm Transfer Tool (Fixed Logic)\n" + "=" * 60)
-    preview_and_transfer(400)
+    preview_and_transfer(800)
