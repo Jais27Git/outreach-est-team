@@ -178,7 +178,7 @@ def preview_and_transfer(num_records=1):
         else:
             print(f"  ❌ ERROR: {response.get('message', 'Unknown error')}")
         
-        time.sleep(1) # Safety delay
+        time.sleep(1) # Safety delays
 
 if __name__ == "__main__":
     print("JotForm Transfer Tool (Fixed Logic)\n" + "=" * 60)
