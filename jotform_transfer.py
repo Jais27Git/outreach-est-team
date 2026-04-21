@@ -1,20 +1,23 @@
 ################# By Ankit.Kumar ################
-# Jotform Bulk Transfer Script v5
+# Jotform Bulk Transfer Script v7 — LIVE MODE
 # Purpose: Transfer eligible submissions from Form 1 (251590768630059) to Form 2 (252653470298060)
 # Filters: Operation = "New VM Installation" AND select_current in allowed stages
 #          AND status = ACTIVE only (skips DELETED and ARCHIVED submissions)
 # Behavior:
 #   Case 1: Lead code NOT in Form 2 → CREATE full new submission with all fields
-#   Case 2: Lead code EXISTS in Form 2 → Check if any of the 5 new fields are empty
+#   Case 2: Lead code EXISTS in Form 2 → Check if any of the 6 new fields are empty
 #           → If any are missing AND Form 1 has data → UPDATE only those missing fields
 #   Note: If a field is empty in Form 1, it is never written to Form 2 (kept blank)
-# Fix: 'text' removed from get_field_value — it is the field label, not the answer
+# Fields transferred:
+#   form_filled_by, spoc_name, spoc_email, commercial_model, rental_amount,
+#   list_of (field 297 → VMID values as comma-separated string → field 32 in Form 2)
 # API: Jotform REST API with pagination (200 records/batch)
 # Output: Creates new submissions OR patches missing fields in existing ones
 #################################################################################################
 
 import requests
 import time
+import json
 
 API_KEY = "9325af147f76da4e263d7c7725d84654"
 FORM1_ID = "251590768630059"
@@ -22,18 +25,19 @@ FORM2_ID = "252653470298060"
 
 # --- Form1 Fields ---
 FORM1_FIELDS = {
-    "operation": '3',
-    "client_name": '15',
-    "client_email": '17',
-    "client_info": '26',
-    "lead_code": '251',
-    "account_team": '50',
-    "select_current": '9',
-    "form_filled_by": '84',
-    "spoc_name": '85',
-    "spoc_email": '86',
-    "commercial_model": '51',    # Radio button field (51_0, 51_1, 51_2, 51_3 - single selection)
-    "rental_amount": '89'
+    "operation":        '3',
+    "client_name":      '15',
+    "client_email":     '17',
+    "client_info":      '26',
+    "lead_code":        '251',
+    "account_team":     '50',
+    "select_current":   '9',
+    "form_filled_by":   '84',
+    "spoc_name":        '85',
+    "spoc_email":       '86',
+    "commercial_model": '51',   # Radio button field (51_0, 51_1, 51_2, 51_3 - single selection)
+    "rental_amount":    '89',
+    "list_of":          '297'   # Configurable List widget; extracts VMID values as comma-separated string
 }
 
 ALLOWED_SELECT_CURRENT_VALUES = {
@@ -43,21 +47,23 @@ ALLOWED_SELECT_CURRENT_VALUES = {
 
 # --- Form2 Fields ---
 FORM2_FIELDS = {
-    "lead_code": '3',
-    "client_name": '5',
-    "client_email": '12',
-    "client_info": '8',
-    "account_team": '15',
+    "lead_code":                '3',
+    "client_name":              '5',
+    "client_email":             '12',
+    "client_info":              '8',
+    "account_team":             '15',
     "original_submission_date": '18',
-    "edit_link_field": '17',
-    "form_filled_by": '26',
-    "spoc_name": '27',
-    "spoc_email": '28',
-    "commercial_model": '30',
-    "rental_amount": '31'
+    "edit_link_field":          '17',
+    "form_filled_by":           '26',
+    "spoc_name":                '27',
+    "spoc_email":               '28',
+    "commercial_model":         '30',
+    "rental_amount":            '31',
+    "list_of":                  '32'   # Plain text field; receives comma-separated VMID string
 }
 
-NEW_FIELDS = ["form_filled_by", "spoc_name", "spoc_email", "commercial_model", "rental_amount"]
+NEW_FIELDS = ["form_filled_by", "spoc_name", "spoc_email", "commercial_model", "rental_amount", "list_of"]
+
 
 # --- Helper Functions ---
 def fetch_json(url, params=None):
@@ -69,6 +75,7 @@ def fetch_json(url, params=None):
         print(f"Request error: {e}")
         return None
 
+
 def post_json(url, data):
     try:
         resp = requests.post(url, data=data)
@@ -76,6 +83,7 @@ def post_json(url, data):
         return resp.json()
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
+
 
 def get_field_value(answers, field_id):
     """
@@ -92,6 +100,33 @@ def get_field_value(answers, field_id):
         return field_data.get('answer') or field_data.get('prettyFormat')
     return str(field_data)
 
+
+def get_widget_rows_as_csv(answers, field_id):
+    """
+    Extracts VMID values from the custom 'Configurable List' widget (field 297).
+    Jotform returns answer as a JSON string: '[{"VMID":"6832"},{"VMID":"6833"}]'
+    Output: comma-separated VMID values e.g. "6832, 6833"
+    Fallback: returns raw answer string if JSON parsing fails.
+    """
+    field_data = answers.get(field_id)
+    if not field_data:
+        return ""
+
+    raw_answer = field_data.get('answer') if isinstance(field_data, dict) else None
+    if not raw_answer:
+        return ""
+
+    try:
+        parsed = json.loads(raw_answer)         # → [{"VMID": "6832"}, {"VMID": "6833"}]
+        if isinstance(parsed, list):
+            values = [str(row.get("VMID", "")).strip() for row in parsed if row.get("VMID")]
+            return ", ".join(values)
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return raw_answer.strip()                   # fallback: return raw string as-is
+
+
 def update_edit_link(submission_id):
     edit_link = f"https://www.jotform.com/edit/{submission_id}"
     url = f"https://api.jotform.com/submission/{submission_id}?apiKey={API_KEY}"
@@ -102,6 +137,7 @@ def update_edit_link(submission_id):
         print(f"    🔗 Edit link updated: {edit_link}")
     except Exception as e:
         print(f"    ❌ Failed to update edit link: {e}")
+
 
 # --- Data Extraction ---
 def get_eligible_form1_data():
@@ -169,7 +205,8 @@ def get_eligible_form1_data():
                 "spoc_name":        (get_field_value(answers, FORM1_FIELDS["spoc_name"]) or "").strip(),
                 "spoc_email":       (get_field_value(answers, FORM1_FIELDS["spoc_email"]) or "").strip(),
                 "commercial_model": (get_field_value(answers, FORM1_FIELDS["commercial_model"]) or "").strip(),
-                "rental_amount":    (get_field_value(answers, FORM1_FIELDS["rental_amount"]) or "").strip()
+                "rental_amount":    (get_field_value(answers, FORM1_FIELDS["rental_amount"]) or "").strip(),
+                "list_of":          get_widget_rows_as_csv(answers, FORM1_FIELDS["list_of"])
             })
 
         print(f"  📊 {len(submissions)} fetched, {len(extracted)} eligible so far")
@@ -245,7 +282,7 @@ def get_existing_form2_data():
 # --- Transfer Logic ---
 def run_transfer():
     print("\n" + "=" * 60)
-    print("JOTFORM BULK TRANSFER & UPDATE v5")
+    print("JOTFORM BULK TRANSFER v7 — LIVE MODE")
     print("=" * 60)
 
     existing_form2 = get_existing_form2_data()
@@ -292,6 +329,7 @@ def run_transfer():
             print(f"  SPOC            : {record['spoc_name'] or '(empty)'} / {record['spoc_email'] or '(empty)'}")
             print(f"  Commercial Model: {record['commercial_model'] or '(empty)'}")
             print(f"  Rental Amount   : {record['rental_amount'] or '(empty)'}")
+            print(f"  VMIDs (f297)    : {record['list_of'] or '(empty)'}")
 
             url = f"https://api.jotform.com/form/{FORM2_ID}/submissions?apiKey={API_KEY}"
             response = post_json(url, data_to_send)
@@ -356,5 +394,5 @@ def run_transfer():
 
 
 if __name__ == "__main__":
-    print("JotForm Transfer Tool v5\n" + "=" * 60)
+    print("JotForm Transfer Tool v7 — LIVE MODE\n" + "=" * 60)
     run_transfer()
